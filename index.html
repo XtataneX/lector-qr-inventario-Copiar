@@ -1,0 +1,157 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lector QR - Inventario Recepción Central</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 30px auto;
+      padding: 20px;
+      background: #f3f5f4;
+      color: #202522;
+    }
+    main {
+      background: white;
+      padding: 22px;
+      border-radius: 12px;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      border: 0;
+      border-radius: 8px;
+      background: #176b43;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    #lector {
+      width: 100%;
+      margin: 16px 0;
+    }
+    #estado {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+    #codigo {
+      font-size: 22px;
+      font-weight: bold;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h2>Lector QR</h2>
+  <p>Inventario Recepción Central</p>
+
+  <button id="iniciar" onclick="iniciar()">Activar cámara</button>
+  <button id="detener" onclick="detener()" disabled>Detener cámara</button>
+
+  <div id="lector"></div>
+  <p id="estado" role="status">Pulsa «Activar cámara» para comenzar.</p>
+
+  <h3>Código leído</h3>
+  <div id="codigo">Todavía no hay código</div>
+
+  <button id="copiar" onclick="copiarCodigo()" disabled>Copiar código</button>
+</main>
+
+<script>
+let escaner = null;
+let codigoLeido = '';
+let procesando = false;
+
+const estado = document.getElementById('estado');
+const botonIniciar = document.getElementById('iniciar');
+const botonDetener = document.getElementById('detener');
+const botonCopiar = document.getElementById('copiar');
+
+async function iniciar() {
+  if (typeof Html5Qrcode === 'undefined') {
+    estado.textContent =
+      'No se pudo cargar la biblioteca QR. Revisa tu conexión.';
+    return;
+  }
+
+  botonIniciar.disabled = true;
+  estado.textContent = 'Solicitando acceso a la cámara...';
+
+  try {
+    const camaras = await Html5Qrcode.getCameras();
+
+    if (!camaras || camaras.length === 0) {
+      throw new Error('No se detectaron cámaras disponibles.');
+    }
+
+    const camara =
+      camaras.find(c => /back|rear|environment|trasera/i.test(c.label))
+      || camaras[0];
+
+    escaner = new Html5Qrcode('lector');
+
+    await escaner.start(
+      camara.id,
+      { fps: 10, qrbox: { width: 230, height: 230 } },
+      async texto => {
+        if (procesando) return;
+        procesando = true;
+
+        codigoLeido = texto.trim();
+        document.getElementById('codigo').textContent = codigoLeido;
+        botonCopiar.disabled = false;
+        estado.textContent = '¡Código QR leído correctamente!';
+
+        try {
+          await detener();
+        } finally {
+          procesando = false;
+        }
+      }
+    );
+
+    botonDetener.disabled = false;
+    estado.textContent = 'Cámara activa. Apunta al código QR.';
+  } catch (error) {
+    botonIniciar.disabled = false;
+    estado.textContent =
+      'No se pudo activar la cámara:\n' +
+      (error && error.message ? error.message : String(error));
+    console.error(error);
+  }
+}
+
+async function detener() {
+  if (escaner && escaner.isScanning) {
+    await escaner.stop();
+  }
+
+  botonDetener.disabled = true;
+  botonIniciar.disabled = false;
+}
+
+async function copiarCodigo() {
+  if (!codigoLeido) return;
+
+  try {
+    await navigator.clipboard.writeText(codigoLeido);
+    estado.textContent = 'Código copiado: ' + codigoLeido;
+  } catch (error) {
+    estado.textContent =
+      'No se pudo copiar automáticamente. Selecciona el código y cópialo manualmente.';
+  }
+}
+</script>
+</body>
+</html>
